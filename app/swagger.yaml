@@ -1,0 +1,103 @@
+openapi: 3.0.0
+info:
+  title: Telemetry API
+  version: 1.0.0
+
+paths:
+  /device:
+    post:
+      summary: Route that accepts necessary data to register a telemetry device in the database.
+      tags:
+        - Device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel:
+                  type: string
+                  example: device1
+                description:
+                  type: string
+                  example: ESP32 with light and temperature sensor
+      responses:
+        '200':
+          description: Device successfully updated
+        '201':
+          description: Device successfully inserted
+        '400':
+          description: Required fields were not provided
+        '500':
+          description: Error inserting device into the database
+  /telemetry:
+    get:
+      summary: Lists the last 100 telemetry entries from all channels
+      tags:
+        - Telemetry
+      responses:
+        '200':
+          description: Successfully retrieved list of telemetry entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    date:
+                      type: string
+                      example: 12:34:56 12/06/2024
+                    light:
+                      type: number
+                      example: 150
+                    temperature:
+                      type: number
+                      example: 22.5
+                    channel:
+                      type: string
+                      example: device1
+        '500':
+          description: Error querying telemetry entries
+  /telemetry/{channel}:
+    get:
+      summary: Lists the last 100 telemetry entries for a specific channel
+      tags:
+        - Telemetry
+      parameters:
+        - in: path
+          name: channel
+          required: true
+          schema:
+            type: string
+          description: The name of the channel for which telemetry entries should be listed
+      responses:
+        '200':
+          description: Successfully retrieved list of telemetry entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    date:
+                      type: string
+                      example: 12:34:56 12/06/2024
+                    light:
+                      type: number
+                      example: 150
+                    temperature:
+                      type: number
+                      example: 22.5
+                    channel:
+                      type: string
+                      example: device1
+        '500':
+          description: Error querying telemetry entries
+tags:
+  - name: Device
+    description: Operations related to device management
+  - name: Telemetry
+    description: Operations related to telemetry queries

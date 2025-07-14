@@ -1,0 +1,6 @@
+services:
+  app-telemetry:
+    command: pytest -s tests/
+    environment:
+      - ENV=dev
+      - PYTHONPATH=/app-telemetry

@@ -1,0 +1,174 @@
+name: "Terraform Workflow"
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      branch:
+        type: string
+        required: true
+      aws-assume-role-arn:
+        type: string
+        required: true
+      aws-region:
+        type: string
+        required: true
+      aws-statefile-s3-bucket:
+        type: string
+        required: true
+      aws-lock-dynamodb-table:
+        type: string
+        required: true
+    secrets:
+      PROD_EC2_PUBLIC_IP:
+        required: true
+      DEV_EC2_PUBLIC_IP:
+        required: true
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Notify Start
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data '{
+            "text": "🚀 *Pipeline started* for repository ${{ github.repository }} on branch ${{ github.ref_name }}",
+            "attachments": [
+              {
+                "color": "#36a64f",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Author", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>", "short": false },
+                  { "title": "Message", "value": "${{ github.event.head_commit.message }}", "short": false },
+                  { "title": "GitHub Action", "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View pipeline>", "short": false }
+                ]
+              }
+            ]
+          }' \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws-assume-role-arn }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Read destroy configuration
+        id: read-destroy-config
+        run: |
+          DESTROY="$(jq -r '.${{ inputs.environment }}' ./terraform/destroy_config.json)"
+          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+
+      - name: Terraform Init
+        run: |
+          cd terraform && terraform init \
+            -backend-config="bucket=${{ inputs.aws-statefile-s3-bucket }}" \
+            -backend-config="key=${{ github.event.repository.name }}" \
+            -backend-config="region=${{ inputs.aws-region }}" \
+            -backend-config="dynamodb_table=${{ inputs.aws-lock-dynamodb-table }}"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Destroy
+        if: steps.read-destroy-config.outputs.destroy == 'true'
+        id: terraform-destroy
+        run: cd terraform &&
+          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }} &&
+          terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -auto-approve
+        env:
+          TF_VAR_slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Terraform Plan
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-plan
+        run: cd terraform &&
+          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }} &&
+          terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -out="${{ inputs.environment }}.plan"
+        env:
+          TF_VAR_slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Terraform Apply
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-apply
+        run: cd terraform &&
+          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }} &&
+          terraform apply "${{ inputs.environment }}.plan"
+        env:
+          TF_VAR_slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+      
+      - name: Probe SSH (port 22)
+        id: probe-ssh
+        continue-on-error: true
+        run: |
+          IP=${{ inputs.environment == 'prod' && secrets.PROD_EC2_PUBLIC_IP || secrets.DEV_EC2_PUBLIC_IP }}
+
+          if timeout 5 bash -c "</dev/tcp/$IP/22" 2>/dev/null; then
+            echo "reachable=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Connect to EC2 and update project
+        if: steps.read-destroy-config.outputs.destroy != 'true' && steps.probe-ssh.outputs.reachable == 'true'
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          # host: ${{ steps.set-ip.outputs.ec2_ip }}
+          host: ${{ inputs.environment == 'prod' && secrets.PROD_EC2_PUBLIC_IP || secrets.DEV_EC2_PUBLIC_IP }}
+          username: ubuntu
+          key: ${{ inputs.environment == 'prod' && secrets.PROD_EC2_SSH_PRIVATE_KEY || secrets.DEV_EC2_SSH_PRIVATE_KEY }}
+          envs: REPO_NAME, ENVIRONMENT
+          script: |
+            set -e
+
+            if [ ! -d "/home/ubuntu/$REPO_NAME/.git" ]; then
+              echo "Repository $REPO_NAME not found. Exiting..."
+              exit 0
+            fi
+            
+            cd /home/ubuntu/$REPO_NAME
+            git pull
+            sudo -u ubuntu /usr/bin/docker compose -p telemetry down
+
+            if [ "$ENVIRONMENT" = "prod" ]; then
+              echo "Running in production environment"
+              sudo -u ubuntu /usr/bin/docker compose -f docker-compose.prod.yml -p telemetry up -d --build
+            else
+              echo "Running in development environment"
+              sudo -u ubuntu /usr/bin/docker compose -f docker-compose.dev.yml -p telemetry up -d --build
+            fi
+            
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+          ENVIRONMENT: ${{ inputs.environment }}
+
+      - name: Success Notification
+        if: success()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data '{"text":"🚀 ✅ Pipeline completed successfully for repository ${{ github.repository }} on branch ${{ github.ref_name }}!"}' \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Failure Notification
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data '{"text":"🚀 ❌ Pipeline failed for repository ${{ github.repository }} on branch ${{ github.ref_name }}!"}' \
+          ${{ secrets.SLACK_WEBHOOK_URL }}

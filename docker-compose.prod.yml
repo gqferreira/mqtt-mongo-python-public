@@ -1,0 +1,31 @@
+services:
+  db-telemetry:
+    image: mongo:7.0.2
+    container_name: db-telemetry
+    ports:
+      - "27018:27017"
+    volumes:
+      - vol-telemetry:/data/db
+      - vol-telemetry:/data/configdb
+      - vol-telemetry:/database
+    networks:
+      - net-telemetry
+
+  app-telemetry:
+    image: pomulo/app-telemetry:1.0
+    container_name: app-telemetry
+    ports:
+      - "3001:3000"
+    build:
+      context: .
+    environment:
+      - ENV=prod
+    networks:
+      - net-telemetry
+
+volumes:
+  vol-telemetry:
+    
+networks:
+  net-telemetry:
+    driver: bridge
