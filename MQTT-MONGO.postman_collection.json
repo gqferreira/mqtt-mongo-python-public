@@ -1,0 +1,77 @@
+{
+	"info": {
+		"_postman_id": "881a56e0-846e-4d4b-a023-805279dc0bea",
+		"name": "MQTT-MONGO",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "1075506"
+	},
+	"item": [
+		{
+			"name": "All Channels",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{IP}}:{{PORT}}/telemetry",
+					"host": [
+						"{{IP}}"
+					],
+					"port": "{{PORT}}",
+					"path": [
+						"telemetry"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Specifc Channel",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{IP}}:{{PORT}}/telemetry/mqtt-mongo",
+					"host": [
+						"{{IP}}"
+					],
+					"port": "{{PORT}}",
+					"path": [
+						"telemetry",
+						"mqtt-mongo"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Insert Device",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"channel\": \"mqtt-mongo\",\n  \"description\": \"ESP32 with light and temperature sensor .134 == prod\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{IP}}:{{PORT}}/device",
+					"host": [
+						"{{IP}}"
+					],
+					"port": "{{PORT}}",
+					"path": [
+						"device"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
