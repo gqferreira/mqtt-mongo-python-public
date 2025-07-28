@@ -1,15 +1,17 @@
-# 📡 mqtt-mongo-python
+# 📡 MQTT with MongoDB, Python and Terraform
 
 This project demonstrates a simple telemetry API written in Python, using MongoDB as a database and various DevOps technologies.
 
 ![Build](https://github.com/gqferreira/mqtt-mongo-python-private/actions/workflows/main.yml/badge.svg)
 ![Coverage](https://img.shields.io/badge/coverage-74%25-brightgreen)
 
+![Technologies](COVER.png)
+
 ---
 
 ## 📑 Table of Contents
 
-- [📡 mqtt-mongo-python](#-mqtt-mongo-python)
+- [📡 MQTT with MongoDB, Python and Terraform](#-mqtt-with-mongodb-python-and-terraform)
   - [📑 Table of Contents](#-table-of-contents)
   - [💻 Running Locally](#-running-locally)
     - [With Python and MongoDB](#with-python-and-mongodb)
